@@ -1,0 +1,26 @@
+version: '1'
+services:
+  gui1:
+    build: ./virtual-gui
+    container_name: gui1
+    networks:
+      - gui_net
+
+  gui2:
+    build: ./virtual-gui
+    container_name: gui2
+    networks:
+      - gui_net
+
+  control:
+    build: ./control
+    container_name: control
+    depends_on:
+      - gui1
+      - gui2
+    networks:
+      - gui_net
+
+networks:
+  gui_net:
+    driver: bridge
