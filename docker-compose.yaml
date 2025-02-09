@@ -20,6 +20,16 @@ services:
       - gui2
     networks:
       - gui_net
+    volumes:
+      - shared_volume:/shared
+
+volumes:
+  shared_volume:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: shared_dir
 
 networks:
   gui_net:

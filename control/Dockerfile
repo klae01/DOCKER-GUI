@@ -12,4 +12,5 @@ ENV PATH=/venv/bin:$PATH
 RUN pip install --upgrade pip && pip install paramiko
 
 COPY control.py /control.py
-CMD ["python", "/control.py"]
+
+CMD ["python", "-u", "/control.py"]
