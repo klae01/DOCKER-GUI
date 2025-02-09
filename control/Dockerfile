@@ -11,6 +11,8 @@ ENV VIRTUAL_ENV=/venv
 ENV PATH=/venv/bin:$PATH
 RUN pip install --upgrade pip && pip install paramiko
 
+ARG CACHE_BREAKER=2
+
 COPY control.py /control.py
 
 CMD ["python", "-u", "/control.py"]

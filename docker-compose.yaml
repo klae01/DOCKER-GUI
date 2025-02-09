@@ -1,19 +1,28 @@
 version: '1'
 services:
   gui1:
-    build: ./virtual-gui
+    build:
+      context: ./virtual-gui
+      args:
+        CACHE_BREAKER: ${CACHE_BREAKER}
     container_name: gui1
     networks:
       - gui_net
 
   gui2:
-    build: ./virtual-gui
+    build:
+      context: ./virtual-gui
+      args:
+        CACHE_BREAKER: ${CACHE_BREAKER}
     container_name: gui2
     networks:
       - gui_net
 
   control:
-    build: ./control
+    build:
+      context: ./control
+      args:
+        CACHE_BREAKER: ${CACHE_BREAKER}
     container_name: control
     depends_on:
       - gui1
@@ -29,7 +38,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: shared_dir
+      device: ${SHARED_DIR}
 
 networks:
   gui_net:
