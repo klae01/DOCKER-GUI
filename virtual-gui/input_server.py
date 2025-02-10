@@ -2,7 +2,6 @@
 import json
 import os
 import socket
-import threading
 
 from Xlib import XK, X, display
 from Xlib.ext import xtest
@@ -12,6 +11,7 @@ key_states = {}
 
 # Open display (Xvfb is running on :99)
 d = display.Display(os.environ.get("DISPLAY", ":99"))
+
 
 def handle_key(cmd):
     """Handle key press/release commands."""
@@ -33,16 +33,28 @@ def handle_key(cmd):
         print("Unknown key action:", action)
     d.flush()
 
+
 def handle_mouse(cmd):
     """Handle mouse move, click, and scroll commands."""
     action = cmd.get("action")
     if action == "move":
-        dx = int(cmd.get("dx", 0))
-        dy = int(cmd.get("dy", 0))
+        abs_mode = "x" in cmd or "y" in cmd
+        rel_mode = "dx" in cmd or "dy" in cmd
         pointer = d.screen().root.query_pointer()
-        new_x = pointer.root_x + dx
-        new_y = pointer.root_y + dy
-        xtest.fake_input(d, X.MotionNotify, x=new_x, y=new_y)
+
+        if abs_mode and not rel_mode:
+            x = int(v if (v := cmd.get("x")) is not None else pointer.root_x)
+            y = int(v if (v := cmd.get("y")) is not None else pointer.root_y)
+        elif not abs_mode and rel_mode:
+            x = pointer.root_x + int(v if (v := cmd.get("dx")) is not None else 0)
+            y = pointer.root_y + int(v if (v := cmd.get("dy")) is not None else 0)
+        else:
+            print(
+                f"Error: Provide either absolute (x={cmd.get('x')}, y={cmd.get('y')}) or "
+                f"relative (dx={cmd.get('dx')}, dy={cmd.get('dy')}) parameters exclusively."
+            )
+            return
+        xtest.fake_input(d, X.MotionNotify, x=x, y=y)
         d.flush()
     elif action == "click":
         button = cmd.get("button", "left").lower()
@@ -62,21 +74,37 @@ def handle_mouse(cmd):
         button_num = ["up", "down", "left", "right"].index(direction) + 4
         for _ in range(amount):
             xtest.fake_input(d, X.ButtonPress, button_num)
+            d.flush()
             xtest.fake_input(d, X.ButtonRelease, button_num)
-        d.flush()
+            d.flush()
     else:
         print("Unknown mouse action:", action)
 
+
 def handle_query(cmd, conn):
-    """Handle query commands."""
-    resp = json.dumps({"state": key_states}) + "\n"
+    """Handle query commands for keyboard and/or mouse"""
+    target_str = cmd.get("target", "keyboard|mouse")
+    targets = target_str.strip().lower().split("|")
+
+    result = {}
+    if "keyboard" in targets:
+        result["keyboard"] = key_states
+    if "mouse" in targets:
+        pointer = d.screen().root.query_pointer()
+        result["mouse"] = {
+            "x": pointer.root_x,
+            "y": pointer.root_y,
+        }
+    resp = json.dumps(result) + "\n"
     conn.sendall(resp.encode("utf-8"))
+
 
 op_handlers = {
     "key": lambda cmd, conn: handle_key(cmd),
     "mouse": lambda cmd, conn: handle_mouse(cmd),
     "query": handle_query,
 }
+
 
 def handle_client(conn):
     buffer = ""
@@ -112,7 +140,7 @@ def main():
     print("Raw input server running on port 7200")
     while True:
         conn, addr = s.accept()
-        threading.Thread(target=handle_client, args=(conn,), daemon=True).start()
+        handle_client(conn)
 
 
 if __name__ == "__main__":
