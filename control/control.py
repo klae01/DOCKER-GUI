@@ -51,7 +51,7 @@ class InputController:
         """Simulate a key release event."""
         self._send_raw_command({"op": "key", "action": "release", "key": key})
 
-    def query_key_state(self, target="keyboard|mouse") -> Dict[str, Any]:
+    def query_state(self, target="keyboard|mouse|window") -> Dict[str, Any]:
         """
         Query the input server for the current key states.
 
@@ -103,7 +103,7 @@ class InputController:
         :param safe: If True, ensure no key is held down before typing.
         """
         if safe:
-            state = self.query_key_state("keyboard")
+            state = self.query_state("keyboard")
             for key, value in state.get("keyboard", {}).items():
                 assert int(value) == 0, f"Key {key} is pressed (state={value})."
         for ch in text:
@@ -155,6 +155,48 @@ class InputController:
             "direction": direction,
             "amount": amount,
         }
+        self._send_raw_command(cmd)
+
+    def set_fullscreen(self, pid: int = None) -> None:
+        """
+        Set the target window(s) to fullscreen mode using the window management API.
+
+        If a PID is provided, only windows with that PID will be adjusted; otherwise,
+        the command is applied to all top-level windows.
+
+        :param pid: Optional process ID to target.
+        """
+        cmd = {"op": "window", "mode": "fullscreen"}
+        if pid is not None:
+            cmd["pid"] = pid
+        self._send_raw_command(cmd)
+
+    def set_window_geometry(
+        self, x: int, y: int, width: int, height: int, pid: int = None
+    ) -> None:
+        """
+        Move and resize the target window(s) using the window management API.
+
+        The command requires the target position and size. If a PID is provided, only
+        windows whose _NET_WM_PID property matches the given PID will be adjusted; otherwise,
+        the command is applied to all top-level windows.
+
+        :param x: The target x-coordinate (absolute) for the window.
+        :param y: The target y-coordinate (absolute) for the window.
+        :param width: The target width for the window.
+        :param height: The target height for the window.
+        :param pid: Optional process ID to filter which window(s) to adjust.
+        """
+        cmd = {
+            "op": "window",
+            "mode": "move_resize",
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+        }
+        if pid is not None:
+            cmd["pid"] = pid
         self._send_raw_command(cmd)
 
     def ssh_run(self, command: str) -> None:
@@ -210,9 +252,13 @@ def main() -> None:
     gui1.send_key("Return")
     time.sleep(5)
     gui1.get_screenshot("/shared/gui1_search.raw")
-    gui1.send_key("F11")
+    print(gui1.query_state("window"))
+    gui1.set_fullscreen()
     time.sleep(5)
     gui1.get_screenshot("/shared/gui1_full.raw")
+    gui1.send_key("F11")
+    time.sleep(5)
+    gui1.get_screenshot("/shared/gui1_full_F11.raw")
 
     for i in range(100):
         gui1.get_screenshot("/shared/gui1_screenshot.raw")

@@ -81,10 +81,58 @@ def handle_mouse(cmd):
         print("Unknown mouse action:", action)
 
 
+def handle_window(cmd, conn):
+    """
+    Handle window management commands.
+
+    Supported modes:
+      - "fullscreen": Resize target windows to cover the full screen.
+      - "move_resize": Move and resize target windows according to provided parameters.
+         Required parameters: x, y, width, height.
+
+    If a "pid" field is provided, only windows whose _NET_WM_PID matches the given value will be adjusted.
+    If no "pid" is provided, the command is applied to all top-level windows.
+    """
+    mode = cmd.get("mode", "fullscreen").lower()
+    target_pid = cmd.get("pid")
+    root = d.screen().root
+    if mode == "fullscreen":
+        geometry = root.get_geometry()
+        for win in root.query_tree().children:
+            if target_pid is not None:
+                pid_prop = win.get_full_property(
+                    d.intern_atom("_NET_WM_PID"), X.AnyPropertyType
+                )
+                if pid_prop is None or int(pid_prop.value[0]) != int(target_pid):
+                    continue
+            win.configure(x=0, y=0, width=geometry.width, height=geometry.height)
+    elif mode == "move_resize":
+        try:
+            x = int(cmd["x"])
+            y = int(cmd["y"])
+            width = int(cmd["width"])
+            height = int(cmd["height"])
+        except KeyError:
+            print("Missing parameters for move_resize mode.")
+            return
+        for win in root.query_tree().children:
+            if target_pid is not None:
+                pid_prop = win.get_full_property(
+                    d.intern_atom("_NET_WM_PID"), X.AnyPropertyType
+                )
+                if pid_prop is None or int(pid_prop.value[0]) != int(target_pid):
+                    continue
+            win.configure(x=x, y=y, width=width, height=height)
+    else:
+        print("Unknown window mode:", mode)
+        return
+    d.sync()
+
+
 def handle_query(cmd, conn):
-    """Handle query commands for keyboard and/or mouse"""
-    target_str = cmd.get("target", "keyboard|mouse")
-    targets = target_str.strip().lower().split("|")
+    """Handle query commands for keyboard, mouse, and/or window"""
+    target_str = cmd.get("target", "keyboard|mouse|window")
+    targets = [t.strip().lower() for t in target_str.split("|")]
 
     result = {}
     if "keyboard" in targets:
@@ -95,6 +143,31 @@ def handle_query(cmd, conn):
             "x": pointer.root_x,
             "y": pointer.root_y,
         }
+    if "window" in targets:
+        root = d.screen().root
+        windows_info = []
+        for win in root.query_tree().children:
+            info = {}
+            pid_prop = win.get_full_property(
+                d.intern_atom("_NET_WM_PID"), X.AnyPropertyType
+            )
+            if pid_prop is not None:
+                info["pid"] = int(pid_prop.value[0])
+            else:
+                info["pid"] = None
+            wm_class = win.get_wm_class()
+            info["class"] = wm_class[0] if wm_class else None
+            info["name"] = win.get_wm_name() or ""
+            try:
+                geometry = win.get_geometry()
+                info["x"] = geometry.x
+                info["y"] = geometry.y
+                info["width"] = geometry.width
+                info["height"] = geometry.height
+            except Exception as e:
+                info["geometry_error"] = str(e)
+            windows_info.append(info)
+        result["window"] = windows_info
     resp = json.dumps(result) + "\n"
     conn.sendall(resp.encode("utf-8"))
 
@@ -102,6 +175,7 @@ def handle_query(cmd, conn):
 op_handlers = {
     "key": lambda cmd, conn: handle_key(cmd),
     "mouse": lambda cmd, conn: handle_mouse(cmd),
+    "window": handle_window,
     "query": handle_query,
 }
 
